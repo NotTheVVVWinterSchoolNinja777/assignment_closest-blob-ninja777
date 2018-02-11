@@ -109,14 +109,89 @@ public:
         
         //FILL IN THE CODE
         
-        // Apply image processing techniques on the disparity image to smooth things out 
-    
+        // Apply image processing techniques on the disparity image to smooth things out
+        yInfo()<<"Something useless";
+        cv::Mat thres_disp = disp.clone();
+        cv::GaussianBlur(disp, thres_disp, cv::Size(9, 9),1,1);
+
+
         // Apply some threshold on the image to remove background:
         // have a look at cv::threshold function
+        //        yInfo<<disp.g
 
+
+        cv::erode(thres_disp,thres_disp,cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(7,7)));
+        cv::dilate(thres_disp,thres_disp,cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(10,10)));
+
+
+        double min,  max;
+        cv::minMaxLoc(thres_disp,&min, &max);
+
+        yInfo()<<"Min :"<<min<<", Max :"<<max;
+        cv::threshold(thres_disp, thres_disp,max-5,max+20,cv::ThresholdTypes::THRESH_BINARY_INV);
         // Find the max value and its position
 
-        //....
+
+        // Find contours
+        std::vector<std::vector<cv::Point>> contours;
+        std::vector<cv::Vec4i> hierarchy;
+        cv::findContours(thres_disp, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+
+        // Approximate contours to polygons + get bounding rects
+        std::vector<std::vector<cv::Point>> contours_poly(contours.size());
+        std::vector<cv::Rect> boundRect(contours.size());
+        std::vector<std::vector<cv::Point>> hull(contours.size());
+        cv::RNG rng(12345);
+        cv::Scalar color = cv::Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+
+        for(int i = 0; i < contours.size(); i++)
+        {
+            cv::convexHull(cv::Mat(contours[i]), hull[i], false);
+            cv::approxPolyDP(cv::Mat(hull[i]), contours_poly[i], 3, true);
+            boundRect[i] = cv::boundingRect(cv::Mat(contours_poly[i]));
+
+        }
+
+        bool isImageCropped = false;
+        for( int i = 0; i< hull.size(); i++ )
+        {
+            cv::Mat out_image = inColour_cv.clone();
+
+            cv::drawContours( disp, hull, i, color, 2, 8, hierarchy, 0, cv::Point() );
+//            cv::rectangle( out_image, boundRect[i].tl(), boundRect[i].br(), color, 2, 8, 0 );
+            if(!isImageCropped){
+
+                cv::Point currentPoint = cv::Point((boundRect[i].x), (boundRect[i].y ));
+                if(currentPoint.x == 0 || currentPoint.y ==0 ){
+                    continue;
+                }
+                isImageCropped = true;
+                yInfo()<<currentPoint.x<<" "<<currentPoint.y;
+                cv::Rect roi(currentPoint.x, currentPoint.y, boundRect[i].width, boundRect[i].height);
+
+                cv::Mat background(inColour_cv.size(), CV_8UC3, cv::Scalar(0,0,0));
+                cv::Mat input_roi= inColour_cv(roi);
+                yInfo()<<"1. Size of roi image :"<<input_roi.rows<<" x "<<input_roi.cols;
+                cv::Mat foreground(input_roi.size(), CV_8UC3, cv::Scalar(0,0,0));
+                yInfo()<<"2. Size of foreground image :"<<foreground.rows<<" x "<<foreground.cols;
+                input_roi.copyTo(foreground, input_roi);
+                yInfo()<<"3. Size of roi image :"<<input_roi.rows<<" x "<<input_roi.cols;
+                yInfo()<<"4. Size of foreground image :"<<foreground.rows<<" x "<<foreground.cols;
+                foreground.copyTo(background(cv::Rect(currentPoint.x, currentPoint.y, foreground.cols, foreground.rows)));
+                yInfo()<<"5. Size of foreground image :"<<foreground.rows<<" x "<<foreground.cols;
+                inColour_cv = background.clone();
+
+                cv::Point center = (boundRect[i].br() + boundRect[i].tl())*0.5;
+                cv::drawMarker(disp,center,cv::Scalar(255), cv::MARKER_TILTED_CROSS,2);
+
+                yarp::os::Bottle  &outputBottle = outTargets.addList();
+                outputBottle.addInt(boundRect[i].tl().x);
+                outputBottle.addInt(boundRect[i].tl().y);
+                outputBottle.addInt(boundRect[i].br().x);
+                outputBottle.addInt(boundRect[i].br().y);
+
+            }
+       }
 
         //Find the contour of the closest objects with moments and mass center
         //
@@ -141,7 +216,7 @@ public:
         outTargets.clear();
         
         if (outTargets.size() >0 )
-            targetPort.write();          
+            targetPort.write();
 
         IplImage out = disp;
         outImage.resize(out.width, out.height);
