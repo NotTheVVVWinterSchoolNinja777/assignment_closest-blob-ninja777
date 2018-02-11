@@ -95,20 +95,20 @@ public:
         yarp::sig::ImageOf<yarp::sig::PixelRgb> &outImage  = outPort.prepare();
         yarp::sig::ImageOf<yarp::sig::PixelRgb> &cropOutImage  = cropOutPort.prepare();
         yarp::os::Bottle &outTargets = targetPort.prepare();
-        
+
         yarp::sig::ImageOf<yarp::sig::PixelRgb> *inImage = inPort.read();
 
         outImage.resize(dispImage.width(), dispImage.height());
         cropOutImage.resize(dispImage.width(), dispImage.height());
-        
+
         outImage.zero();
         cropOutImage.zero();
-        
+
         cv::Mat inColour_cv = cv::cvarrToMat((IplImage *)inImage->getIplImage());  // prepare the image ports and targets
         cv::Mat disp = cv::cvarrToMat((IplImage *)dispImage.getIplImage());
-        
+
         //FILL IN THE CODE
-        
+
         // Apply image processing techniques on the disparity image to smooth things out
         yInfo()<<"Something useless";
         cv::Mat thres_disp = disp.clone();
@@ -183,7 +183,7 @@ public:
 
                 cv::Point center = (boundRect[i].br() + boundRect[i].tl())*0.5;
                 cv::drawMarker(disp,center,cv::Scalar(255), cv::MARKER_TILTED_CROSS,2);
-
+                outTargets.clear();
                 yarp::os::Bottle  &outputBottle = outTargets.addList();
                 outputBottle.addInt(boundRect[i].tl().x);
                 outputBottle.addInt(boundRect[i].tl().y);
@@ -195,7 +195,7 @@ public:
 
         //Find the contour of the closest objects with moments and mass center
         //
-        
+
         //....
 
         // optional hint: you could use pointPolygonTest and the previous maxvalue location to compare with all contours found and get the actual brightest one
@@ -213,16 +213,15 @@ public:
 
         cvtColor(disp, disp, CV_GRAY2RGB);
 
-        outTargets.clear();
-        
         if (outTargets.size() >0 )
             targetPort.write();
-
+        yInfo()<<"Converting disp to IPL";
         IplImage out = disp;
         outImage.resize(out.width, out.height);
         cvCopy( &out, (IplImage *) outImage.getIplImage());
         outPort.write();
 
+        yInfo()<<"Converting inColor to IPL";
         IplImage crop = inColour_cv;
         cropOutImage.resize(crop.width, crop.height);
         cvCopy( &crop, (IplImage *) cropOutImage.getIplImage());
